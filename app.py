@@ -14,6 +14,8 @@ import socket
 
 from flask import Flask, jsonify
 
+from calendrier import est_bissextile
+
 __author__ = "Lucas MAGRET"
 __school__ = "ESME | Majeure Transformations Digitales | INGE3"
 __module__ = "Services Cloud | TP DevOps : de Git à Kubernetes sur Azure AKS"
@@ -41,6 +43,12 @@ def health():
 def ready():
     """Sonde de disponibilité (readiness)."""
     return jsonify(status="ready")
+
+
+@app.get("/bissextile/<int:annee>")
+def bissextile(annee):
+    """Indique si une année est bissextile (calendrier grégorien)."""
+    return jsonify(annee=annee, bissextile=est_bissextile(annee))
 
 
 if __name__ == "__main__":
