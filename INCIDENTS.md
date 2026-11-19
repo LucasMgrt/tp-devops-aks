@@ -23,3 +23,14 @@ Auteur : Lucas MAGRET | ESME INGE3 | TP DevOps AKS (Sopra Steria)
 - **Cause racine :** le modèle fourni par l'équipe filtre les push sur `master`, ancienne branche par défaut. GitHub nomme la branche par défaut `main` depuis 2020 : le déclencheur `push` ne correspond donc à aucune branche.
 - **Correction appliquée :** `.github/workflows/ci-cd.yml`, `branches: [master]` remplacé par `branches: [main]` (branche `fix/ci-branche-main`, commit `fix(ci): déclencher le pipeline sur main`, PR fusionnée). Le push de fusion a déclenché le pipeline complet, image publiée avec les tags `sha-…` et `latest`.
 - **Comment l'éviter à l'avenir :** vérifier les déclencheurs (`on:`) dès la relecture de la PR ; activer la règle de protection de `main` qui exige le statut « Qualité et tests » (bonus B1) ; passer `actionlint` sur les workflows.
+
+## Incident n°3 | Pods en `OOMKilled` puis `CrashLoopBackOff`
+- **Partie / étape :** Partie 4 | 4.2 (`kubectl apply` du Deployment)
+- **Symptôme observé :** `kubectl get pods -w` affiche les pods en `0/1 Running`, puis `OOMKilled`, puis `CrashLoopBackOff` ; la colonne `RESTARTS` augmente sans cesse. Les pods ne passent jamais `1/1`.
+- **Diagnostic :**
+  - `kubectl describe pod <pod>` : `Last State: Terminated`, `Reason: OOMKilled`, `Exit Code: 137` (128 + 9, signal SIGKILL envoyé par le noyau) ; événements `Back-off restarting failed container`.
+  - `kubectl logs <pod> --previous` : gunicorn démarre (`Booting worker with pid …`) puis le conteneur est tué, sans trace d'erreur Python : c'est bien une coupure externe.
+  - Mesure de référence hors cluster : gunicorn (processus maître + 2 workers, Flask chargé) occupe environ **57 Mio** (somme des PSS des 3 processus), soit près du double de la limite imposée de **32Mi**.
+- **Cause racine :** `limits.memory: 32Mi` est inférieur à l'empreinte mémoire réelle de l'application. Le cgroup du conteneur dépasse sa limite, le noyau déclenche l'OOM killer.
+- **Correction appliquée :** `k8s/deployment.yaml`, `requests.memory` 16Mi → **64Mi** et `limits.memory` 32Mi → **128Mi** (marge x2 sur la mesure, CPU inchangé), justification écrite en commentaire dans le manifeste. Contrôle : `(2 replicas + 1 maxSurge) x 128Mi = 384Mi` reste dans le quota `limits.memory` du namespace (vérifié avec `kubectl describe resourcequota`). Commit `fix(k8s): ressources mémoire adaptées à gunicorn`, branche `feat/k8s`.
+- **Comment l'éviter à l'avenir :** dimensionner `requests`/`limits` à partir d'une mesure (`docker stats`, `kubectl top pods`, bonus B5) et non d'une valeur arbitraire ; garder les ressources versionnées et justifiées dans le manifeste.

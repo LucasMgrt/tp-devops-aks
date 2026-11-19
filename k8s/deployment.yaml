@@ -28,9 +28,13 @@ spec:
           envFrom:
             - configMapRef:
                 name: mon-app-config
-          resources:                        # valeurs imposées par l'exploitation
-            requests: { cpu: 50m, memory: 16Mi }
-            limits:   { cpu: 200m, memory: 32Mi }
+          # Incident n°3 : 16Mi/32Mi imposés => OOMKilled en boucle.
+          # Mesure : gunicorn (maître + 2 workers) ~57 Mio au repos.
+          # Mémoire relevée avec une marge x2, CPU inchangé.
+          # Rolling update : 3 pods x 128Mi = 384Mi, à confronter au quota.
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits:   { cpu: 200m, memory: 128Mi }
           readinessProbe:
             httpGet: { path: /ready, port: http }
             initialDelaySeconds: 3
