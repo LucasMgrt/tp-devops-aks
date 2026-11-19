@@ -3,7 +3,7 @@ name: CI/CD
 
 on:
   push:
-    branches: [master]
+    branches: [main]   # incident n°2 : le modèle visait "master"
     tags: ["v*"]
   pull_request:
     branches: [main]
