@@ -65,3 +65,53 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: APP_VERSION=${{ github.sha }}
 
+  deploiement:
+    name: Déploiement sur AKS
+    needs: [qualite, image]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploiement-aks
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - name: Installer kubectl
+        run: |
+          VERSION=$(curl -fsSL https://dl.k8s.io/release/stable.txt)
+          curl -fsSL -o /tmp/kubectl \
+            "https://dl.k8s.io/release/${VERSION}/bin/linux/amd64/kubectl"
+          sudo install -o root -g root -m 0755 /tmp/kubectl /usr/local/bin/kubectl
+          kubectl version --client
+      - name: Configurer l'accès au cluster
+        env:
+          KUBECONFIG_CONTENU: ${{ secrets.KUBECONFIG }}
+        run: |
+          mkdir -p ~/.kube
+          printf '%s\n' "$KUBECONFIG_CONTENU" > ~/.kube/config
+          chmod 600 ~/.kube/config
+          kubectl auth can-i create deployments
+      - name: Déployer
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA::7}"
+          echo "Déploiement de $IMAGE"
+          sed -i -E "s|^([[:space:]]*image:[[:space:]]*).*|\1${IMAGE}|" \
+            k8s/deployment.yaml
+          grep -n "image:" k8s/deployment.yaml
+          kubectl apply -f k8s/
+          kubectl rollout status deployment/mon-app --timeout=180s
+      - name: Test post-déploiement
+        run: |
+          URL="http://${{ vars.APP_HOST }}"
+          curl --fail -sS --retry 10 --retry-delay 3 --retry-all-errors "$URL/health"
+          echo
+          # Un ancien pod peut encore répondre pendant sa terminaison
+          for essai in $(seq 1 10); do
+            if curl -fsS "$URL/" | jq -e --arg v "$GITHUB_SHA" '.version == $v'; then
+              echo "Version $GITHUB_SHA bien en production"
+              exit 0
+            fi
+            echo "Essai $essai : nouvelle version pas encore servie"
+            sleep 3
+          done
+          echo "::error::La version servie ne correspond pas à $GITHUB_SHA"
+          exit 1
