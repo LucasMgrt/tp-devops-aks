@@ -1,0 +1,28 @@
+# Git et CI
+.git
+.gitignore
+.github/
+
+# Environnement virtuel et caches Python / pytest
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Tests et outillage dev (inutiles en production)
+tests/
+requirements-dev.txt
+pytest.ini
+.flake8
+
+# Manifestes Kubernetes et secrets
+k8s/
+kubeconfig*
+.env
+
+# Documentation
+*.md
+Dockerfile
+.dockerignore
